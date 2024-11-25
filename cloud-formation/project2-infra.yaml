@@ -1,0 +1,89 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Creating an ec2 instance
+ 
+Mappings:
+  # Allows cloudformation to use only these AMIs in the following regions
+  MapEc2Region:
+    us-east-2:
+      HVM64: ami-0c80e2b6ccb9ad6d1
+    us-west-2:
+      HVM64: ami-055e3d4f0bbeb5878
+ 
+  MapEnvironmentType:
+    # Allows cloudformation to only use these instance types depending on the Env type
+    Prod:
+      InstanceType: t3.small
+    Dev:
+      InstanceType: t3.micro
+ 
+Parameters:
+  ParamEnvironmentType:
+    Description: Select the Environment Type from the list
+    Type: String
+    Default: Dev
+    AllowedValues:
+      - Prod
+      - Dev
+  ParamKeyName:
+    Description: Select the key name from the list
+    Type: AWS::EC2::KeyPair::KeyName
+ 
+  ParamAZName:
+    Description: Select the Avaiability Zone name from the list
+    Type: AWS::EC2::AvailabilityZone::Name
+ 
+Conditions:
+  ConditionForProdEIP: !Equals
+    - !Ref ParamEnvironmentType
+    - Prod
+ 
+Resources:
+ 
+  HTTpSShSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow HTTP and SSH traffic
+      GroupName: DemoHTTPSShSecurityGroup
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '80'
+          ToPort: '80'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          CidrIp: 0.0.0.0/0
+  MyEIP:
+    Type: AWS::EC2::EIP
+    Condition: ConditionForProdEIP
+    Properties:
+      InstanceId: !Ref MyProdEC2Instance
+ 
+ 
+  MyProdEC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !FindInMap
+        - MapEc2Region
+        - !Ref AWS::Region
+        - HVM64
+ 
+      KeyName: !Ref ParamKeyName
+      AvailabilityZone: !Ref ParamAZName
+      InstanceType: !FindInMap
+        - MapEnvironmentType
+        - !Ref ParamEnvironmentType
+        - InstanceType
+      Tags:
+        - Key: Name
+          Value: !Ref ParamEnvironmentType
+      UserData: !Base64 |
+        #!/bin/bash -xe
+        yum update -y
+        yum install -y httpd
+        systemctl start httpd
+        systemctl enable httpd
+        echo '<html><h1>Hello From Your Restart Web Server!</h1></html>' > /var/www/html/index.html
+      SecurityGroups:
+        - !Ref HTTpSShSecurityGroup
+ 
